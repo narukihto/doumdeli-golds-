@@ -1,0 +1,16 @@
+# مجلدات البناء المؤقتة للأندرويد وأداة Bubblewrap
+/android-build-dir/
+/android-output/
+/.bubblewrap/
+npm-debug.log*
+
+# ملفات توقيع التطبيق والمفاتيح السرية (لحمايتها وعدم رفعها للعامة)
+*.keystore
+*.jks
+*.p12
+
+# ملفات النظام والمحررات المؤقتة
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
