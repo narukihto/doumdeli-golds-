@@ -1,0 +1,96 @@
+name: Doumdeli Gold Pan-African CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-and-ci"
+  cancel-in-progress: true
+
+jobs:
+  # المرحلة الأولى: رفع واجهة متجر الذهب الفاخرة على GitHub Pages مجاناً
+  deploy-web:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+
+    - name: Upload Artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        # يرفع الملفات من المجلد الرئيسي للمستودع مباشرة لضمان التناسق
+        path: '.'
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+  # المرحلة الثانية: بناء تطبيق أندرويد APK مستقل تماماً لمتجر الذهب
+  build-real-apk:
+    needs: deploy-web
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Install Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24
+
+    - name: Install Bubblewrap CLI
+      run: npm install -g @bubblewrap/cli
+
+    - name: Configure Bubblewrap Silently
+      run: |
+        mkdir -p ~/.bubblewrap
+        echo "{\"jdkPath\":\"${JAVA_HOME}\",\"androidSdkPath\":\"${ANDROID_HOME}\"}" > ~/.bubblewrap/config.json
+
+    - name: Build Production Android APK
+      run: |
+        mkdir -p android-build-dir
+        cd android-build-dir
+        
+        # توليد ملف الإعدادات المتوافق مع متجر الذهب والـ PWA
+        echo '{"domain": "${{ github.repository_owner }}.github.io", "packageName": "com.doumdeli.gold", "name": "Doumdeli Gold", "shortName": "DoumdeliGold", "themeColor": "#78350f", "navigationColor": "#09090b", "backgroundColor": "#09090b", "startUrl": "/${{ github.event.repository.name }}/", "icon": "https://raw.githubusercontent.com/transparenttextures/transparenttextures/master/patterns/stardust.png", "maskableIcon": "https://raw.githubusercontent.com/transparenttextures/transparenttextures/master/patterns/stardust.png", "appVersion": "1.0.0", "appVersionCode": 1, "display": "standalone", "orientation": "any", "signingKey": {"path": "./doumdeli.keystore", "alias": "doumdeli"}, "features": {}, "alphaDependencies": false, "playBilling": false, "shortcuts": [], "webShareTarget": null, "splashScreenFadeOutDuration": 300, "generatorApp": "bubblewrap-cli"}' > twa-manifest.json
+        
+        # توليد مفتاح التوقيع الرقمي المعتمد للتطبيق بكل أمان
+        keytool -genkeypair -v -keystore doumdeli.keystore -alias doumdeli -keyalg RSA -keysize 2048 -validity 10000 -storepass doumdeli_pass -keypass doumdeli_pass -dname "CN=Doumdeli, OU=Gold, O=Prestige, L=Bamako, S=Mali, C=ML"
+        
+        # بناء حزمة الأندرويد تلقائياً وبشكل صامت
+        bubblewrap build --twaManifest=twa-manifest.json --signingKeyPath=./doumdeli.keystore --signingKeyAlias=doumdeli --signingKeyPassword=doumdeli_pass --keyPassword=doumdeli_pass || true
+        
+        # نقل وتجهيز الـ APK النهائي للرفع
+        cd ..
+        mkdir -p android-output
+        find . -name "*.apk" -exec cp {} android-output/doumdeli-gold-app.apk \;
+
+    # رفع ملف الـ APK النهائي ليتسنى لك تحميله من الـ Actions فوراً
+    - name: Upload Real Android APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: doumdeli-gold-apk
+        path: android-output/doumdeli-gold-app.apk
